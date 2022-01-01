@@ -12,6 +12,7 @@ This repository provide a easy and safe way to command the UAV in the VICON room
     sudo apt install -y ros-$ROS_DISTRO-vrpn
     sudo apt install -y ros-$ROS_DISTRO-vrpn-client-ros
     sudo apt install -y ros-$ROS_DISTRO-sophus
+    sudo ln -s /usr/include/eigen3/Eigen /usr/include/Eigen
     ```
 2. Clone the packages into your catkin workspace and compile
     (the following instructions assume your catkin workspace is at: ~/camel_ws/src)
