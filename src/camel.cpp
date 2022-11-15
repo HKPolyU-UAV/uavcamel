@@ -54,6 +54,7 @@ bool   pub_pidtwist  = false;
 bool   Force_start   = false;
 bool   ShutDown = false;
 bool   ForcePIDcontroller = false;
+bool   ForceHeadingControl = true;
 bool   KFok;
 /* Mission Path */
 string MissionPath = "/home/jeremy/camel_ws/src/uavcamel/src/utils/Missions/Mission.csv";
@@ -143,6 +144,14 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
             Vec4 xyzyaw;
                 xyzyaw << UAV_lp[0],UAV_lp[1],UAV_lp[2],Q2yaw(Vec4(UAV_lp[3],UAV_lp[4],UAV_lp[5],UAV_lp[6]));
             uav_twist_pub(uav_poistion_controller_PID(xyzyaw,Pos_setpoint));
+        }else if (ForceHeadingControl){
+            Vec7 uavposepub;
+            double des_yaw = atan2(traj_pos_deque_front[1]-UAV_lp[0],traj_pos_deque_front[2]-UAV_lp[1]);
+            Quaterniond Targetq;
+            Targetq = rpy2Q(Vec3(0,0,des_yaw));
+            uavposepub << traj_pos_deque_front[1],traj_pos_deque_front[2],traj_pos_deque_front[3],
+                          Targetq.w(),Targetq.x(),Targetq.y(),Targetq.z();
+            uav_pose_pub(uavposepub);
         }else{
             Vec7 uavposepub;
             uavposepub << traj_pos_deque_front[1],traj_pos_deque_front[2],traj_pos_deque_front[3],
