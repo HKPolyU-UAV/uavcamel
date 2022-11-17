@@ -54,10 +54,10 @@ bool   pub_pidtwist  = false;
 bool   Force_start   = false;
 bool   ShutDown = false;
 bool   ForcePIDcontroller = false;
-bool   ForceHeadingControl = true;
+bool   ForceHeadingControl = false;
 bool   KFok;
 /* Mission Path */
-string MissionPath = "/home/jeremy/camel_ws/src/uavcamel/src/utils/Missions/Mission.csv";
+string MissionPath = "/home/yurong/camel_ws/src/uavcamel/src/utils/Missions/Mission.csv";
 
 
 Vec4 uav_poistion_controller_PID(Vec4 pose, Vec4 setpoint){ //XYZyaw
@@ -142,16 +142,14 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
         if(ForcePIDcontroller){
             Pos_setpoint << traj_pos_deque_front[1],traj_pos_deque_front[2],traj_pos_deque_front[3],Q2yaw(Vec4(traj_pos_deque_front[4],traj_pos_deque_front[5],traj_pos_deque_front[6],traj_pos_deque_front[7]));
             Vec4 xyzyaw;
-                xyzyaw << UAV_lp[0],UAV_lp[1],UAV_lp[2],Q2yaw(Vec4(UAV_lp[3],UAV_lp[4],UAV_lp[5],UAV_lp[6]));
+            xyzyaw << UAV_lp[0],UAV_lp[1],UAV_lp[2],Q2yaw(Vec4(UAV_lp[3],UAV_lp[4],UAV_lp[5],UAV_lp[6]));
             uav_twist_pub(uav_poistion_controller_PID(xyzyaw,Pos_setpoint));
         }else if (ForceHeadingControl){
-            Vec7 uavposepub;
-            double des_yaw = atan2(traj_pos_deque_front[1]-UAV_lp[0],traj_pos_deque_front[2]-UAV_lp[1]);
-            Quaterniond Targetq;
-            Targetq = rpy2Q(Vec3(0,0,des_yaw));
-            uavposepub << traj_pos_deque_front[1],traj_pos_deque_front[2],traj_pos_deque_front[3],
-                          Targetq.w(),Targetq.x(),Targetq.y(),Targetq.z();
-            uav_pose_pub(uavposepub);
+            Vec8 traj_pos_deque_at5 = trajectory_pos.at(5);
+            Pos_setpoint << traj_pos_deque_front[1],traj_pos_deque_front[2],traj_pos_deque_front[3],atan2(traj_pos_deque_at5[1]-UAV_lp[0],traj_pos_deque_at5[2]-UAV_lp[1]);
+            Vec4 xyzyaw;
+            xyzyaw << UAV_lp[0],UAV_lp[1],UAV_lp[2],Q2yaw(Vec4(UAV_lp[3],UAV_lp[4],UAV_lp[5],UAV_lp[6]));
+            uav_twist_pub(uav_poistion_controller_PID(xyzyaw,Pos_setpoint));
         }else{
             Vec7 uavposepub;
             uavposepub << traj_pos_deque_front[1],traj_pos_deque_front[2],traj_pos_deque_front[3],
@@ -250,7 +248,7 @@ void Finite_stage_mission(){  // Main FSM
         }
         if (Mission_state == 5){ //state = 5; land.
             pub_trajpose = true;  pub_pidtwist = false;
-            TargetPos << UAV_takeoffP[0],UAV_takeoffP[1],UAV_takeoffP[2],Targetq.w(),Targetq.x(),Targetq.y(),Targetq.z();
+            TargetPos << UAV_lp[0],UAV_lp[1],UAV_lp[2],Targetq.w(),Targetq.x(),Targetq.y(),Targetq.z(); // Land at current pos
             constantVtraj(UAV_lp, TargetPos, Current_stage_mission[5], Current_stage_mission[6]);
         }
         if (Mission_state == 6){ //state = 6; PID constant pose position control
@@ -390,8 +388,8 @@ int main(int argc, char **argv)
             cout << "thrust: " << UAV_AttitudeTarget.thrust << endl;
             uav_AttitudeTarget.publish(UAV_AttitudeTarget);
         }
-        if(pub_pidtwist ||ForcePIDcontroller){uav_vel_pub.publish(UAV_twist_pub);}
-        if(pub_trajpose&&!ForcePIDcontroller){uav_pos_pub.publish(UAV_pose_pub);}
+        if(pub_pidtwist ||ForcePIDcontroller ||ForceHeadingControl){uav_vel_pub.publish(UAV_twist_pub);}
+        if(pub_trajpose&&!ForcePIDcontroller&&!ForceHeadingControl){uav_pos_pub.publish(UAV_pose_pub);}
         /*Mission information cout**********************************************/
         if(coutcounter > 50 && FSMinit && !ShutDown){ //reduce cout rate
 
