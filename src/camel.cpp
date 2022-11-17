@@ -58,6 +58,10 @@ bool   ForceHeadingControl = false;
 bool   KFok;
 /* Mission Path */
 string MissionPath = "/home/yurong/camel_ws/src/uavcamel/src/utils/Missions/Mission.csv";
+/* For Multi Drones */
+bool   Waitallies   = true;
+bool   TakeOffFinished = false;
+bool   MateReady = false;
 
 
 Vec4 uav_poistion_controller_PID(Vec4 pose, Vec4 setpoint){ //XYZyaw
@@ -157,9 +161,20 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
             uav_pose_pub(uavposepub);
         }
         if (traj_pos_deque_front[0] > traj_pos_information[1]){
-            Mission_stage++;
-            trajectory_pos.clear();
-            uav_pose_pub(Zero7);
+            if(Mission_state == 1){
+                TakeOffFinished = true;
+            }
+            if(Waitallies){
+                if(MateReady){
+                    Mission_stage++;
+                    trajectory_pos.clear();
+                    uav_pose_pub(Zero7);
+                }
+            }else{
+                Mission_stage++;
+                trajectory_pos.clear();
+                uav_pose_pub(Zero7);
+            }
         }
     }
     if(pub_pidtwist){  //Use PID position controller
@@ -276,6 +291,9 @@ void Finite_stage_mission(){  // Main FSM
             
             /*For CPP deque safety. Default generate 10 second of hover*/
             int hovertime = 10;
+            if(Mission_state == 1){
+                hovertime = 600;
+            }
             if(trajectory_pos.size()>0){
                 traj_pos = trajectory_pos.back();
                 for (int i=0; i<(hovertime/Trajectory_timestep); i++){
