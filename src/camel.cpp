@@ -303,6 +303,13 @@ void datalogger(){
         ","<<UAV_pose_pub.pose.position.x<<","<<UAV_pose_pub.pose.position.y<<","<<UAV_pose_pub.pose.position.z<<endl;
     save.close();
 }
+void LandDetector(){
+    if (Mission_state == 5){
+        if(UAV_lp(2) < 0.1){
+            ShutDown = true;
+        }
+    }
+}
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "Camel");
@@ -380,6 +387,7 @@ int main(int argc, char **argv)
         /* FSM *****************************************************************/
         Finite_stage_mission();
         uav_pub(pub_trajpose,pub_pidtwist);
+        LandDetector();
         if(ShutDown){
             cout << "Vehicle Soft Shut Down" << endl;
             pub_pidtwist = false;
