@@ -25,6 +25,8 @@ static geometry_msgs::PoseStamped   UAV_pose_sub,UAV_pose_pub;
 static geometry_msgs::TwistStamped  UAV_twist_sub;
 static geometry_msgs::Twist         UAV_twist_pub;
 static Vec7 UAV_lp;
+static std_msgs::Bool               this_drone_ready;
+
 
 /* System */
 bool System_init = false;
@@ -57,11 +59,13 @@ bool   ForcePIDcontroller = false;
 bool   ForceHeadingControl = false;
 bool   KFok;
 /* Mission Path */
-string MissionPath = "/home/yurong/camel_ws/src/uavcamel/src/utils/Missions/Mission.csv";
+string MissionPath = "/home/yurong/catkin_ws/src/uavcamel/src/utils/Missions/Mission2.csv";
+
 /* For Multi Drones */
 bool   Waitallies   = true;
-bool   TakeOffFinished = false;
-bool   MateReady = false;
+bool   IamReady = false;
+bool   MateReady1 = false;
+bool   MateReady2 = false;
 
 
 Vec4 uav_poistion_controller_PID(Vec4 pose, Vec4 setpoint){ //XYZyaw
@@ -136,6 +140,10 @@ void uav_twist_pub(Vec4 vxyzaz){
     UAV_twist_pub.linear.z = vxyzaz(2);
     UAV_twist_pub.angular.z= vxyzaz(3);
 }
+void alley_ready_pub(bool IamReady)
+{
+  this_drone_ready.data = IamReady;
+}
 void uav_pub(bool pub_trajpose, bool pub_pidtwist){
     if(pub_trajpose){
         Vec8 traj_pos_deque_front = trajectory_pos.front();
@@ -162,13 +170,15 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
         }
         if (traj_pos_deque_front[0] > traj_pos_information[1]){
             if(Mission_state == 1){
-                TakeOffFinished = true;
+                IamReady = true;
             }
             if(Waitallies){
-                if(MateReady){
+                alley_ready_pub(IamReady);
+                if(MateReady1 && MateReady2){
                     Mission_stage++;
                     trajectory_pos.clear();
                     uav_pose_pub(Zero7);
+                    //IamReady = false;
                 }
             }else{
                 Mission_stage++;
@@ -188,6 +198,14 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
         }
         uav_twist_pub(uav_poistion_controller_PID(xyzyaw,Pos_setpoint));
     }
+}
+void ready_cb1(const std_msgs::Bool::ConstPtr & msg)
+{
+    MateReady1 = msg->data;
+}
+void ready_cb2(const std_msgs::Bool::ConstPtr & msg)
+{
+    MateReady2 = msg->data;
 }
 string armstatus(){
     if(current_state.armed){
@@ -225,9 +243,10 @@ void Finite_stage_mission(){  // Main FSM
         trajectory_pos.clear();
         Current_Mission_stage = Mission_stage;      //Update Current_Mission_stage
         Current_stage_mission = waypoints.at(Mission_stage-1);
+        Mission_state = Current_stage_mission[0];
         Quaterniond Targetq;
         Targetq = rpy2Q(Vec3(0,0,Current_stage_mission[4]));
-        Mission_state = Current_stage_mission[0];
+
         if (Mission_state == 1){ //state = 1 take off with no heading change
             pub_trajpose = true;  pub_pidtwist = false;
             TargetPos << UAV_lp[0],UAV_lp[1],Current_stage_mission[3],UAV_lp[3],UAV_lp[4],UAV_lp[5],UAV_lp[6];
@@ -263,7 +282,7 @@ void Finite_stage_mission(){  // Main FSM
         }
         if (Mission_state == 5){ //state = 5; land.
             pub_trajpose = true;  pub_pidtwist = false;
-            TargetPos << UAV_lp[0],UAV_lp[1],UAV_lp[2],Targetq.w(),Targetq.x(),Targetq.y(),Targetq.z(); // Land at current pos
+            TargetPos << UAV_lp[0],UAV_lp[1],-1,Targetq.w(),Targetq.x(),Targetq.y(),Targetq.z(); // Land at current pos
             constantVtraj(UAV_lp, TargetPos, Current_stage_mission[5], Current_stage_mission[6]);
         }
         if (Mission_state == 6){ //state = 6; PID constant pose position control
@@ -323,7 +342,7 @@ void datalogger(){
 }
 void LandDetector(){
     if (Mission_state == 5){
-        if(UAV_lp(2) < 0.1){
+        if(UAV_lp(2) < 0.05){
             ShutDown = true;
         }
     }
@@ -340,6 +359,11 @@ int main(int argc, char **argv)
     ros::Publisher uav_pos_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 5); 
     ros::Publisher uav_vel_pub = nh.advertise<geometry_msgs::Twist>("/mavros/setpoint_velocity/cmd_vel_unstamped", 5);
     ros::Publisher uav_AttitudeTarget = nh.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude",5);
+
+    ros::Publisher  iam_ready_pub = nh.advertise<std_msgs::Bool>("/Agent0/mavros/ready", 10);
+    ros::Subscriber alley_ready_sub1 = nh.subscribe<std_msgs::Bool>("/Agent1/mavros/ready", 1, ready_cb1);
+    ros::Subscriber alley_ready_sub2 = nh.subscribe<std_msgs::Bool>("/Agent2/mavros/ready", 1, ready_cb2);
+
     mavros_msgs::SetMode offb_set_mode,posctl_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
     posctl_set_mode.request.custom_mode = "POSCTL";
@@ -351,7 +375,8 @@ int main(int argc, char **argv)
     ros::Rate loop_rate(50); /* ROS system Hz */
     remove("camel.csv");
 
-    while(ros::ok()){
+    while(ros::ok() && !current_state.connected)
+    {
         /* System initailize ***************************************************/
         if (!System_init){
             System_initT = ros::Time::now().toSec();
@@ -367,8 +392,15 @@ int main(int argc, char **argv)
             }
             System_init = true;
         }
+
+
+    }
+    last_request = ros::Time::now();
         /* offboard and arm ****************************************************/
-        if((ros::Time::now() - init_time < ros::Duration(5.0))){
+    cout << "ros::Time " << ros::Time::now() << endl;
+    cout << "init time " << init_time << endl;
+    while(ros::ok())
+    {
             if( current_state.mode != "OFFBOARD" && (ros::Time::now() - last_request > ros::Duration(0.5))){
                 //Set Offboard trigger duration here
                 uav_pos_pub.publish(UAV_pose_pub);
@@ -384,7 +416,7 @@ int main(int argc, char **argv)
                 last_request = ros::Time::now();
                 }
             }
-        }
+
         /* FSM initailize */
         if (current_state.mode == "OFFBOARD" && current_state.armed && !FSMinit){
             FSMinit = true;
@@ -435,6 +467,7 @@ int main(int argc, char **argv)
             cout << "---------------------------------------------------" << endl;
             coutcounter = 0;
         }else{coutcounter++;}
+        iam_ready_pub.publish(this_drone_ready);
         /* ROS timer */
         // auto currentT = ros::Time::now().toSec();
         // cout << "System_Hz: " << 1/(currentT-LastT) << endl;
@@ -442,5 +475,5 @@ int main(int argc, char **argv)
         datalogger();
         ros::spinOnce();
         loop_rate.sleep();
-    }
+      }
 }

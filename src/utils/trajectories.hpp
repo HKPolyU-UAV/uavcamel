@@ -23,10 +23,10 @@ void constantVtraj( Vec7 StartPose, Vec7 EndPose, double velocity, double angula
   double dist_duration = dist/velocity; // In seconds
   double duration; //total duration in seconds
   Vec3 vxyz = Vec3(((EndPose[0]-start_xyz[0])/dist)*velocity,((EndPose[1]-start_xyz[1])/dist)*velocity,((EndPose[2]-start_xyz[2])/dist)*velocity);
-  if (start_rpy[2]>=M_PI)  start_rpy[2]-=2*M_PI;
-  if (start_rpy[2]<=-M_PI) start_rpy[2]+=2*M_PI;
-  if (des_rpy[2]>=M_PI)    des_rpy[2]-=2*M_PI;
-  if (des_rpy[2]<=-M_PI)   des_rpy[2]+=2*M_PI;
+//   if (start_rpy[2]>=M_PI)  start_rpy[2]-=2*M_PI;
+//   if (start_rpy[2]<=-M_PI) start_rpy[2]+=2*M_PI;
+//   if (des_rpy[2]>=M_PI)    des_rpy[2]-=2*M_PI;
+//   if (des_rpy[2]<=-M_PI)   des_rpy[2]+=2*M_PI;
   double d_yaw = des_rpy[2] - start_rpy[2];
   if (d_yaw>=M_PI)  d_yaw-=2*M_PI;
   if (d_yaw<=-M_PI) d_yaw+=2*M_PI;
@@ -42,9 +42,13 @@ void constantVtraj( Vec7 StartPose, Vec7 EndPose, double velocity, double angula
       Quaterniond q;
       // RPY
       if(dt<=yaw_duration){
-          q = rpy2Q(Vec3(0,0,start_rpy[2]+dt*angular_velocity));
+        if(d_yaw>0){
+            q = rpy2Q(Vec3(0,0,start_rpy[2]+dt*angular_velocity));
+        }else{
+            q = rpy2Q(Vec3(0,0,start_rpy[2]-dt*angular_velocity));
+        }
       }else{
-          q = rpy2Q(des_rpy);
+        q = rpy2Q(des_rpy);
       }
       // Position_xyz
       if(dt<=dist_duration){
@@ -66,7 +70,7 @@ void AM_traj_pos(vector<Vector3d> WPs,Vec7 UAV_lp, Vec4 UAV_twist, Vec4 End_twis
     Trajectory am_traj;
     desq = rpy2Q(desrpy);
     //(weightT,weightAcc,weightJerk,maxVelRate,maxAccRate,iterations,epsilon);
-    AmTraj amTrajOpt(256,16,0.4,2.5,5,100,0.02);
+    AmTraj amTrajOpt(256,16,0.4,1,1,100,0.02);
     Vector3d twistxyz_begin(UAV_twist[0],UAV_twist[1],UAV_twist[2]);
     Vector3d twistxyz_end(End_twist[0],End_twist[1],End_twist[2]);
     Vector3d zero3(0.0, 0.0, 0.0);
