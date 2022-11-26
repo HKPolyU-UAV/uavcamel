@@ -303,7 +303,7 @@ void Finite_stage_mission(){  // Main FSM
                 int wpc = Current_stage_mission[7]/Trajectory_timestep;
                 for (double i=0; i<wpc; i++){
                     traj_pos[0] += Trajectory_timestep;
-                    trajectory_pos.push_back(traj_pos);0000000000000000000000000000000000000000
+                    trajectory_pos.push_back(traj_pos);
                 }
             }
 
