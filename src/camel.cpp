@@ -15,6 +15,7 @@
 #include <mavros_msgs/State.h>
 #include <mavros_msgs/AttitudeTarget.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Int16.h>
 #include "utils/kinetic_math.hpp"
 #include "utils/uav_mission.hpp"
 #include "utils/trajectories.hpp"
@@ -59,13 +60,13 @@ bool   ForcePIDcontroller = false;
 bool   ForceHeadingControl = false;
 bool   KFok;
 /* Mission Path */
-string MissionPath = "/home/yurong/catkin_ws/src/uavcamel/src/utils/Missions/Mission2.csv";
+string MissionPath = "/home/yurong/catkin_ws/src/uavcamel/src/utils/Missions/Mission.csv";
 
 /* For Multi Drones */
 bool   Waitallies   = true;
-bool   IamReady = false;
-bool   MateReady1 = false;
-bool   MateReady2 = false;
+int16_t   MyFinishedStage = 0;
+int16_t   Mate1FinishedStage = 0;
+int16_t   Mate2FinishedStage = 0;
 
 
 Vec4 uav_poistion_controller_PID(Vec4 pose, Vec4 setpoint){ //XYZyaw
@@ -111,7 +112,7 @@ void uav_twist_sub(const geometry_msgs::TwistStamped::ConstPtr& twist){
                  UAV_twist_sub.twist.linear.z,UAV_twist_sub.twist.angular.z;
 }
 void uav_state_sub(const mavros_msgs::State::ConstPtr& msg){
-    current_state = *msg;   
+    current_state = *msg;
 }
 void uav_pose_sub(const geometry_msgs::PoseStamped::ConstPtr& pose){
     UAV_pose_sub.pose.position.x = pose->pose.position.x;
@@ -140,9 +141,9 @@ void uav_twist_pub(Vec4 vxyzaz){
     UAV_twist_pub.linear.z = vxyzaz(2);
     UAV_twist_pub.angular.z= vxyzaz(3);
 }
-void alley_ready_pub(bool IamReady)
+void alley_ready_pub(bool MyFinishedStage)
 {
-  this_drone_ready.data = IamReady;
+  this_drone_ready.data = MyFinishedStage;
 }
 void uav_pub(bool pub_trajpose, bool pub_pidtwist){
     if(pub_trajpose){
@@ -169,19 +170,17 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
             uav_pose_pub(uavposepub);
         }
         if (traj_pos_deque_front[0] > traj_pos_information[1]){
-            if(Mission_state == 1){
-                IamReady = true;
-            }
+            MyFinishedStage = Mission_stage;
             if(Waitallies){
-                alley_ready_pub(IamReady);
-                if(MateReady1 && MateReady2){
+                alley_ready_pub(MyFinishedStage);
+                if(MyFinishedStage == Mate1FinishedStage && MyFinishedStage == Mate2FinishedStage){
                     Mission_stage++;
                     trajectory_pos.clear();
                     uav_pose_pub(Zero7);
-                    //IamReady = false;
+                    //MyFinishedStage = false;
                 }
             }else{
-                Mission_stage++;
+                MyFinishedStage++;
                 trajectory_pos.clear();
                 uav_pose_pub(Zero7);
             }
@@ -199,13 +198,13 @@ void uav_pub(bool pub_trajpose, bool pub_pidtwist){
         uav_twist_pub(uav_poistion_controller_PID(xyzyaw,Pos_setpoint));
     }
 }
-void ready_cb1(const std_msgs::Bool::ConstPtr & msg)
+void ready_cb1(const std_msgs::Int16::ConstPtr & msg)
 {
-    MateReady1 = msg->data;
+    Mate1FinishedStage = msg->data;
 }
-void ready_cb2(const std_msgs::Bool::ConstPtr & msg)
+void ready_cb2(const std_msgs::Int16::ConstPtr & msg)
 {
-    MateReady2 = msg->data;
+    Mate2FinishedStage = msg->data;
 }
 string armstatus(){
     if(current_state.armed){
@@ -304,15 +303,12 @@ void Finite_stage_mission(){  // Main FSM
                 int wpc = Current_stage_mission[7]/Trajectory_timestep;
                 for (double i=0; i<wpc; i++){
                     traj_pos[0] += Trajectory_timestep;
-                    trajectory_pos.push_back(traj_pos);
+                    trajectory_pos.push_back(traj_pos);0000000000000000000000000000000000000000
                 }
             }
-            
-            /*For CPP deque safety. Default generate 10 second of hover*/
-            int hovertime = 10;
-            if(Mission_state == 1){
-                hovertime = 600;
-            }
+
+            /*For CPP deque safety. Default generate 10 minutes of hover*/
+            int hovertime = 600;
             if(trajectory_pos.size()>0){
                 traj_pos = trajectory_pos.back();
                 for (int i=0; i<(hovertime/Trajectory_timestep); i++){
@@ -356,13 +352,13 @@ int main(int argc, char **argv)
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("/mavros/state", 10, uav_state_sub);
     ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>("/mavros/cmd/arming");
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
-    ros::Publisher uav_pos_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 5); 
+    ros::Publisher uav_pos_pub = nh.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 5);
     ros::Publisher uav_vel_pub = nh.advertise<geometry_msgs::Twist>("/mavros/setpoint_velocity/cmd_vel_unstamped", 5);
     ros::Publisher uav_AttitudeTarget = nh.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude",5);
 
-    ros::Publisher  iam_ready_pub = nh.advertise<std_msgs::Bool>("/Agent0/mavros/ready", 10);
-    ros::Subscriber alley_ready_sub1 = nh.subscribe<std_msgs::Bool>("/Agent1/mavros/ready", 1, ready_cb1);
-    ros::Subscriber alley_ready_sub2 = nh.subscribe<std_msgs::Bool>("/Agent2/mavros/ready", 1, ready_cb2);
+    ros::Publisher  iam_ready_pub = nh.advertise<std_msgs::Int16>("/Agent0/mavros/ready", 10);
+    ros::Subscriber alley_ready_sub1 = nh.subscribe<std_msgs::Int16>("/Agent1/mavros/ready", 1, ready_cb1);
+    ros::Subscriber alley_ready_sub2 = nh.subscribe<std_msgs::Int16>("/Agent2/mavros/ready", 1, ready_cb2);
 
     mavros_msgs::SetMode offb_set_mode,posctl_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
@@ -383,7 +379,7 @@ int main(int argc, char **argv)
             init_time = ros::Time::now();
             waypoints = Mission_generator(MissionPath); //Generate stages
             cout << " System Initialized" << " Force_start: " << Force_start << endl;
-            /* Waypoints before starting */ 
+            /* Waypoints before starting */
             uav_pose_pub(Zero7);
             for(int i = 10; ros::ok() && i > 0; --i){
                 uav_pos_pub.publish(UAV_pose_pub);
